@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>나의 웹(2370068, 정세인)</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body { font:16px/1.4 system-ui, sans-serif; padding:20px; }
+    .card { border:1px solid #ddd; border-radius:12px; padding:16px; max-width:520px; }
+    .row { display:flex; gap:8px; align-items:baseline; }
+    .v { font-size:28px; font-weight:700; }
+    #raw { white-space:pre-wrap; background:#f6f8fa; padding:8px; border-radius:8px; }
+    .ok { color:#2e7d32; } .err { color:#c62828; }
+    code { background:#f6f8fa; padding:2px 6px; border-radius:6px; }
+  </style>
+</head>
+<body>
+  <h3>나의 웹(2370068, 정세인)</h3>
+
+  <div class="card">
+    <div>브로커: <code id="broker">wss://damoa.io:9002</code></div>
+    <div>토픽: <code id="topic"></code></div>
+    <div id="status">연결 대기중…</div>
+    <hr/>
+    <div class="row"><div>온도:</div><div id="temp" class="v">--</div><div>°C</div></div>
+    <div class="row"><div>습도:</div><div id="humi" class="v">--</div><div>%</div></div>
+    <p style="margin-top:10px">최근 수신 원문(JSON/텍스트)</p>
+    <pre id="raw"></pre>
+  </div>
+
+  <script>
+    // ===== 설정 =====
+    const brokerUrl = 'wss://damoa.io:9002';   // 브라우저용 WSS(WebSocket Secure) 포트
+    const topic = 'ewha/2370068';              // ← 과제 4단계에서 본인 학번으로 유지/수정
+    document.getElementById('topic').textContent = topic;
+
+    // 고유 클라이언트 ID
+    const clientId = 'iot-client-' + Math.random().toString(16).slice(2, 10);
+    const client = mqtt.connect(brokerUrl, { clientId });
+
+    // UI 엘리먼트
+    const $status = document.getElementById('status');
+    const $temp = document.getElementById('temp');
+    const $humi = document.getElementById('humi');
+    const $raw = document.getElementById('raw');
+
+    console.log(`MQTT 브로커(${brokerUrl})에 접속 시도…`);
+
+    // 접속 성공
+    client.on('connect', () => {
+      console.log(`✅ 접속 성공 (id=${clientId})`);
+      $status.innerHTML = `<span class="ok">연결됨</span>`;
+
+      // 본인 토픽 구독
+      client.subscribe(topic, (err) => {
+        if (err) {
+          console.error('구독 오류:', err);
+          $status.innerHTML = `<span class="err">구독 오류</span>`;
+          return;
+        }
+        console.log(`📄 구독 성공: ${topic}`);
+
+        // ✅ 최초 접속 체크인: 같은 토픽으로 1회 JSON 전송 (과제 요건)
+        const checkin = {
+          source: "web",
+          event: "checkin",
+          name: "정세인",
+          id: "2370068",
+          ts: new Date().toISOString()
+        };
+        client.publish(topic, JSON.stringify(checkin));
+      });
+    });
+
+    // 메시지 수신 → 화면 갱신
+    client.on('message', (_topic, message) => {
+      const text = message.toString();
+      console.log(_topic, text);
+      $raw.textContent = text; // 원문 항상 표시
+
+      // JSON이면 온/습도 필드만 뽑아 표시
+      try {
+        const data = JSON.parse(text);
+        if (typeof data.temp !== "undefined") $temp.textContent = data.temp;
+        if (typeof data.humi !== "undefined") $humi.textContent = data.humi;
+      } catch(e) {
+        // JSON 아니면(텍스트) 숫자칸은 그대로 두고 원문만 갱신
+      }
+    });
+
+    client.on('reconnect', () => { $status.textContent = '재연결 시도중…'; });
+    client.on('error', (err) => {
+      console.error('연결 오류:', err);
+      $status.innerHTML = `<span class="err">연결 오류</span>`;
+    });
+    client.on('close', () => { $status.textContent = '연결 종료'; });
+  </script>
+</body>
+</html>
